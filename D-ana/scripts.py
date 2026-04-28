@@ -299,6 +299,13 @@ class Network:
             # print([b.max() for b in self.bias])
             # print([b.min() for b in self.bias])
         
+
+    def save(self):
+        for i, v in enumerate(self.weights):
+            pd.DataFrame(v).to_csv(f"./Outputs/SNN/Weights/h{i+1}.csv",index=None)
+            pd.DataFrame(self.bias[i]).to_csv(f"./Outputs/SNN/Biases/h{i+1}.csv",index=None)
+        self.clean()
+        
     def Test(self):
         for t, v in enumerate(self.weights):
             if t == 0:
@@ -330,6 +337,8 @@ class Network:
                 act_out = self.actFuncs[0](out)
         self.output = act_out
         print(self.metrics(self.test_out_ind))
+        if self.accuracy > 0.99:
+            self.save()
 
     def clean(self):
         self.lib.cleanup()
