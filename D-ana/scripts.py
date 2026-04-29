@@ -1,11 +1,10 @@
-from scipy.io import arff
+#from scipy.io import arff
 import ctypes
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import pprint as pp
 import time
-import random
 
 class Node():
     def __init__(self, data, root=True, level=0, side=None, depth=None):
