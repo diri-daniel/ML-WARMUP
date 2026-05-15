@@ -70,9 +70,10 @@ class Network:
             dL_dn = layer.backward(dL_dn)
 
     def Fit(self, train, epochs):
+        targets = self.encode(train[1])
         for epoch in range(epochs):
             self.Forward(train[0])
-            self.dL_do = self.loss(train[1])# get this after running the loss function should not be hard
+            self.dL_do = self.loss(targets)# get this after running the loss function should not be hard
             self.Backward()
 
     def catCrossEnt(self, target):
@@ -85,8 +86,15 @@ class Network:
         self.Loss = -np.mean(target * np.log(np.clip(self.output, 1e-7, 1)) + (1 - target) * np.log(np.clip(1 - self.output, 1e-7, 1)))
         return x
 
-    def accuracy(self):
-        pass
+    def encode(self, targets):
+        arr = np.zeros((len(targets), self.layers[-1].neuronLength))
+        arr[np.arange(len(targets)), targets.astype(int)] = 1
+        return arr
+
+    def accuracy(self, target):
+        predicted = np.argmax(self.output, axis=1)
+        actual = np.argmax(target, axis=1)
+        return np.mean(predicted == actual)
 
 class Layers:
     def __init__(self, size:int, activation:str="relu", alpha:float=0.1, backend:str="numpy"):
@@ -165,7 +173,7 @@ class Layers:
         else: # is a string
             dL_daz = dL_dz
 
-        dL_dw = self.inp.T @ dL_daz / len(self.inp)
+        dL_dw = self.inp.T @ dL_daz / len(self.inp) #change this later. use self.matmul(). might have to look at the dot products of I.T * dL/daz and dL/daz.T and I
         dL_db = np.mean(dL_daz, axis=0)
         dL_din = self.matmul(dL_daz, self.weights.T)
 
