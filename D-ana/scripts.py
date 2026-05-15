@@ -102,7 +102,6 @@ class Node():
 class Network: 
 
     def __init__(self, train, test, network):
-        np.random.seed(3)
         print(network)
         self.train_in, self.train_out = train
         self.classes = np.unique(self.train_out)

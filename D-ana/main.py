@@ -1,6 +1,8 @@
 from scripts import *
 import numpy as np
 
+np.random.seed(3)
+
 ks = np.arange(1, stop=10, step=2)
 #s1()
 #s2()

@@ -7,7 +7,19 @@ class Network:
     def __init__(self, layers:list)->None:
         self.layers = layers
 
-    def Compile(self, LearningRate:float=0.01, Loss:str="CCE", metrics:list=["Accuracy"], weightDist:str="default") -> None:
+    def Compile(self, LearningRate:float=0.01, Loss:str="CCE", metrics:list=["Accuracy"], weightDist:str="default", force:bool=False) -> None:
+
+        lastLayerSimplify = self.layers[-1].activation_slope
+        if not callable(lastLayerSimplify) and not force:
+            Loss = lastLayerSimplify
+            print(f"Auto-set loss to {Loss}. Set force=True to override.")
+
+        elif force:
+            print(f"Warning: Loss function {Loss} is forced. Its not an error but please confirm {Loss} is appropriate for last layer slope")
+
+        else:
+            print(f"Warning: last layer is a function. Its not an error but please confirm {Loss} is appropriate")
+
         loss_functs = {
             "CCE" : self.catCrossEnt,
             "BCE" : self.binCrossEnt
@@ -60,35 +72,59 @@ class Network:
     def Fit(self, train, epochs):
         for epoch in range(epochs):
             self.Forward(train[0])
-            self.dL_do = self.loss()# get this after running the loss function should not be hard
+            self.dL_do = self.loss(train[1])# get this after running the loss function should not be hard
             self.Backward()
 
-    def catCrossEnt(self):
-        pass
+    def catCrossEnt(self, target):
+        x = self.output - target
+        self.Loss = -np.mean(np.sum(target * np.log(np.clip(self.output, 1e-7, 1)), axis=1))
+        return x
 
-    def binCrossEnt(self):
-        pass
+    def binCrossEnt(self, target):
+        x = self.output - target
+        self.Loss = -np.mean(target * np.log(np.clip(self.output, 1e-7, 1)) + (1 - target) * np.log(np.clip(1 - self.output, 1e-7, 1)))
+        return x
 
     def accuracy(self):
         pass
 
 class Layers:
-    def __init__(self, size:int, activation:str="relu", backend:str="numpy"):
-        # add try catch and error handling, SFMX doesnt need slope but still
+    def __init__(self, size:int, activation:str="relu", alpha:float=0.1, backend:str="numpy"):
+        
         act_functs = {
             "relu" : [self.Relu, self.ReluSlope],
             "lrelu" : [self.LRelu, self.LReluSlope],
-            "sigmoid" : [self.sigmoid, self.sigmoidSlope],
-            "SFMX" : [self.SoftMax, self.SoftMaxSlope]
+            "sigmoid" : [self.sigmoid, "CCE"],
+            "SFMX" : [self.SoftMax, "BCE"]
         }
         matmul_functs = {
             "numpy" : self.numpyMatmul,
             "openCl" : self.openCl 
         }
+        
         self.neuronLength = size
-        self.activation = act_functs.get(activation, None)[0]
-        self.activation_slope = act_functs.get(activation, None)[1]
-        self.matmul = matmul_functs.get(backend, None)
+        self.alpha = alpha
+        try:
+            act = act_functs[activation]
+            self.activation = act[0]
+            self.activation_slope = act[1]
+        except KeyError:
+            print(f"KeyError: {activation} is not a valid activation Key.\nValid keys are {act_functs.keys()}.\n")
+            return
+
+        except Exception as e:
+            print(f"{e}:HUH !!!")
+            return
+        try:
+            self.matmul = matmul_functs[backend]
+            
+        except KeyError:
+            print(f"KeyError: {backend} is not a valid backend Key.\nValid keys are {matmul_functs.keys()}.\n")
+            return
+
+        except Exception as e:
+            print(f"{e}:HUH !!!")
+            return
 
     def genWeightsBiases(self, previousNeuronLength:int, weightDist:str="default") -> None:
         shape = (previousNeuronLength, self.neuronLength)
@@ -122,32 +158,45 @@ class Layers:
         self.activatedValues = self.activation(self.values)
         return self.activatedValues
 
-    def backward(self, dL_dn:np.ndarray) -> np.ndarray:
-        self.dL_dn = dL_dn
-        dL_dz = dL_dn * self.activation_slope(self.values)
+    def backward(self, dL_dz:np.ndarray) -> np.ndarray:
+        if not callable(self.activation_slope): #self.activation_slope is not a string
+            dL_daz = dL_dz * self.activation_slope(self.values)
 
-        dL_dw = self.inp.T @ dL_dz / len(self.inp)
-        dL_db = np.mean(dL_dz, axis=0)
-        dL_din = self.matmul(dL_dz, self.weights.T)
+        else: # is a string
+            dL_daz = dL_dz
+
+        dL_dw = self.inp.T @ dL_daz / len(self.inp)
+        dL_db = np.mean(dL_daz, axis=0)
+        dL_din = self.matmul(dL_daz, self.weights.T)
 
         self.weights -= self.lr * dL_dw
-        self.bias -= self.lr * dL_db 
+        self.biases -= self.lr * dL_db 
         return dL_din
 
-    def Relu(self):
-        pass
+    def Relu(self, neuron):
+        return np.maximum(neuron,0)
+    
+    def ReluSlope(self, neuron):
+        return (neuron>=0).astype(float)
 
-    def LRelu(self):
-        pass
-
-    def sigmoid(self):
-        pass
-
-    def SoftMax(self):
-        pass
+    def LRelu(self, neuron):
+        print(f"Warning: alpha already set. Set layers(alpha) at initialization")
+        return np.where(neuron>=0, neuron, neuron*self.alpha)
+    
+    def LReluSlope(self, neuron):
+        print(f"Warning: alpha already set. Set layers(alpha) at initialization")
+        return np.where(neuron>=0, 1, self.alpha)
+        
+    def sigmoid(self ,neuron):
+        return 1 / (1 + np.exp(-neuron))
+    
+    def SoftMax(self, neuron):
+        mx = np.max(neuron, axis=1, keepdims=True)
+        e = np.exp(neuron-mx)
+        return e/np.sum(e, axis=1, keepdims=True)
 
     def numpyMatmul(self, a, b):
-        pass
+        return a @ b
 
     def openCl(self, a, b):
         pass
