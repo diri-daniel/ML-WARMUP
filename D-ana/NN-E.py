@@ -69,12 +69,15 @@ class Network:
         for layer in reversed(self.layers[1:]):
             dL_dn = layer.backward(dL_dn)
 
-    def Fit(self, train, epochs):
-        targets = self.encode(train[1])
+    def Fit(self, train, epochs=100):
+        #targets = self.encode(train[1])
+        self.pLoss = []
+        targets = train[1]
         for epoch in range(epochs):
             self.Forward(train[0])
             self.dL_do = self.loss(targets)# get this after running the loss function should not be hard
             self.Backward()
+            self.pLoss.append(float(self.Loss))
 
     def catCrossEnt(self, target):
         x = self.output - target
@@ -118,7 +121,7 @@ class Layers:
             self.activation_slope = act[1]
         except KeyError:
             print(f"KeyError: {activation} is not a valid activation Key.\nValid keys are {act_functs.keys()}.\n")
-            return
+            raise(KeyError)
 
         except Exception as e:
             print(f"{e}:HUH !!!")
@@ -128,7 +131,7 @@ class Layers:
             
         except KeyError:
             print(f"KeyError: {backend} is not a valid backend Key.\nValid keys are {matmul_functs.keys()}.\n")
-            return
+            raise(KeyError)
 
         except Exception as e:
             print(f"{e}:HUH !!!")
@@ -152,7 +155,7 @@ class Layers:
 
         except KeyError:
             print(f"KeyError: {weightDist} is not a valid weight distribution Key.\nValid keys are {distributions.keys()}.\n")
-            return
+            raise(KeyError)
 
         except Exception as e:
             print(f"{e}:HUH !!!")
@@ -167,7 +170,7 @@ class Layers:
         return self.activatedValues
 
     def backward(self, dL_dz:np.ndarray) -> np.ndarray:
-        if not callable(self.activation_slope): #self.activation_slope is not a string
+        if callable(self.activation_slope): #self.activation_slope is not a string
             dL_daz = dL_dz * self.activation_slope(self.values)
 
         else: # is a string
@@ -204,6 +207,7 @@ class Layers:
         return e/np.sum(e, axis=1, keepdims=True)
 
     def numpyMatmul(self, a, b):
+        #print(a.shape, b.shape)
         return a @ b
 
     def openCl(self, a, b):
@@ -211,9 +215,39 @@ class Layers:
 
 
 snn = Network([
-    Layers(6, None, None),
-    Layers(10),
-    Layers(38)
+    Layers(17),
+    Layers(10, "relu"),
+    Layers(38, "relu"),
+    Layers(2, "SFMX")
 ])
 
-snn.Compile(90, Loss="CCE", metrics=[])
+snn.Compile(LearningRate=0.1)
+
+tn = pd.read_csv("./datasets/data-1-onehot-train.csv")
+tt = pd.read_csv("./datasets/data-1-onehot-test.csv")
+
+    # print(f"Train data spread:\n{tn["class"].value_counts()}")
+    # print(f"Test data spread:\n{tt["class"].value_counts()}")
+
+train_in = tn.drop(["class"], axis=1).to_numpy()
+    # train_in = np.array([[int(w.strip("b'")) for w in v] for v in train_in], dtype=np.int32)
+train_out = np.where(tn["class"].to_numpy() == "b'0'", 0, 1)
+train_out = np.array([[1, 0] if x == 0 else [0, 1] for x in train_out])
+print(train_out)
+
+train = (train_in, train_out)
+
+test_in = tt.drop(["class"], axis=1).to_numpy()
+    # test_in = np.array([[int(w.strip("b'")) for w in v] for v in test_in], dtype=np.int32)
+test_out = tt["class"].to_numpy()
+
+test = (test_in, test_out)
+
+snn.Fit(train=train, epochs=1000)
+
+x = np.arange(start=0, step=1, stop= len(snn.pLoss))
+y = snn.pLoss
+print(x)
+print(y)
+plt.plot(x, y)
+plt.show()
