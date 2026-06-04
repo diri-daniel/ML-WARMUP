@@ -4,8 +4,8 @@ import ctypes
 import matplotlib.pyplot as plt
 
 # Note:
-# 1. testing is not implemented yet. only training is implemented.
-# 2. implement accuracy and other metrics later. for now, just implement loss and make sure it decreases over epochs.
+# 1. testing is not implemented yet. only training is implemented. - Done
+# 2. implement accuracy and other metrics. - Done
 # 3. implement opencl backend for layers.
 # 4. maybe code a simple parameter randomizer for testing and experimentation purposes.
 # 5. timers for experimentation purposes. maybe make a simple class for this that can be used as a context manager.
@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 class Network:
     def __init__(self, layers:list)->None:
-        # layers should be a list of Layers objects. 
+        # layers should be a list of Layers objects.
         # The first layer should be the input layer and the last layer should be the output layer. 
         # The input layer is not used for calculations but is used to set the input shape for the first hidden layer. 
         # The output layer is used to set the output shape for the last hidden layer. 
@@ -40,13 +40,19 @@ class Network:
         else:
             print(f"Warning: last layer is a function. Its not an error but please confirm {Loss} is appropriate")
 
+        if "F1" in metrics and ("Precision" in metrics or "Recall" in metrics):
+            print("Warning: F1 is set. Precision and Recall will be ignored in metric calculations to avoid redundancy. setting force=True does not override this.")
+
         # set the loss function and metric functions based on the provided keys.
         loss_functs = {
             "CCE" : self.catCrossEnt,
             "BCE" : self.binCrossEnt
         }
         metric_functs = {
-            "Accuracy" : self.accuracy
+            "Accuracy" : self.accuracy,
+            "Precision" : self.precision,
+            "Recall" : self.recall,
+            "F1" : self.f1
         }
 
         try:
@@ -61,9 +67,11 @@ class Network:
             return
 
         try:
-            self.metrics = []
+            self.metrics = {}
+            
+
             for x in metrics:
-                self.metrics.append(metric_functs[x])
+                self.metrics[x] = metric_functs[x]
 
         except KeyError:
             print(f"KeyError: {x} is not a valid metric Key.\nValid keys are {metric_functs.keys()}.\n")
@@ -107,14 +115,17 @@ class Network:
         #targets = self.encode(train[1]) fix this later. only encode if requested and appropriate parameters are set. for now, just assume the targets are already encoded.
         self.pLoss = [] # stores loss for each epoch.
         targets = train[1] # change this later. only encode if requested and appropriate parameters are set. for now, just assume the targets are already encoded.
-        self.acc = [] # stores accuracy for each epoch. fix this later. only calculate if requested and appropriate parameters are set. for now, just assume accuracy is always calculated.
+        self.sMV = {}
+        for metric in self.metrics:
+            self.sMV[metric] = [] # stores values for each epoch.
         # simple training loop.
         for epoch in range(epochs):
             self.Forward(train[0])
             self.dL_do = self.loss(targets) # precariously stores the gradient of the loss with respect to the output of the network for use in the backward pass. change this later. might be made more modular.
             self.Backward()
             self.pLoss.append(float(self.Loss))
-            self.acc.append(float(self.accuracy(targets)))
+
+            self.calcMetrics(targets, self.sMV)
 
     # the loss functions return the gradient of the loss with respect to the output of the network and also store the loss in the network object for use in plotting the loss curve.
     def catCrossEnt(self, target):
@@ -126,6 +137,18 @@ class Network:
         x = self.output - target
         self.Loss = -np.mean(target * np.log(np.clip(self.output, 1e-7, 1)) + (1 - target) * np.log(np.clip(1 - self.output, 1e-7, 1)))
         return x
+    
+    def Test(self, test):
+        targets = test[1] 
+        self.Forward(test[0])
+        self.loss(targets)
+        self.testMetrics = {}
+        for metric in self.metrics:
+            self.testMetrics[metric] = []
+        self.calcMetrics(targets, self.testMetrics)
+        print(f"Test Loss: {self.Loss}")
+        for metric, values in self.testMetrics.items():
+            print(f"Test {metric}: {np.mean(values)}")
 
     # fix later but onehot encodes actual outputs. should be made more automatic.
     def encode(self, targets):
@@ -133,11 +156,55 @@ class Network:
         arr[np.arange(len(targets)), targets.astype(int)] = 1
         return arr
 
-    # implemented but unused.
     def accuracy(self, target):
         predicted = np.argmax(self.output, axis=1)
         actual = np.argmax(target, axis=1)
         return np.mean(predicted == actual)
+    
+    def precision(self, target):
+        predicted = np.argmax(self.output, axis=1)
+        actual = np.argmax(target, axis=1)
+        tp = np.sum((predicted == 1) & (actual == 1))
+        fp = np.sum((predicted == 1) & (actual == 0))
+        return tp / (tp + fp + 1e-7)
+    
+    def recall(self, target):
+        predicted = np.argmax(self.output, axis=1)
+        actual = np.argmax(target, axis=1)
+        tp = np.sum((predicted == 1) & (actual == 1))
+        fn = np.sum((predicted == 0) & (actual == 1))
+        return tp / (tp + fn + 1e-7)
+
+    def f1(self, target):
+        precision = self.precision(target)
+        recall = self.recall(target)
+        return (2 * (precision * recall) / (precision + recall + 1e-7), precision, recall)
+    
+    def calcMetrics(self, target, store):
+        for metric in self.metrics:
+                if metric == "F1":
+                    f1, precision, recall = self.metrics[metric](target)
+                    store[metric].append(float(f1))
+                    if "Precision" in self.metrics:
+                        store["Precision"].append(float(precision))
+                    if "Recall" in self.metrics:
+                        store["Recall"].append(float(recall))
+
+                elif (metric == "Precision" or metric == "Recall") and "F1" in self.metrics:
+                    continue
+
+                else:
+                    store[metric].append(float(self.metrics[metric](target)))
+    
+    def plotMetrics(self):
+        x = np.arange(start=0, step=1, stop= len(self.pLoss))
+        y = self.pLoss
+        plt.plot(x, y, label="Loss")
+        for metric in self.metrics:
+            plt.plot(x, self.sMV[metric], label=metric)
+        plt.legend()
+        plt.show()
+
     
 class Preprocessor():
     def __init__(self, data:tuple, output:str="onehot", split:float=0.8)->None:
@@ -291,7 +358,7 @@ snn = Network([
     Layers(2, "SFMX")
 ])
 
-snn.Compile(LearningRate=0.1)
+snn.Compile(LearningRate=0.1, metrics=["Accuracy", "F1", "Precision", "Recall"], weightDist="He_Uniform")
 
 tn = pd.read_csv("./datasets/data-1-onehot-train.csv")
 tt = pd.read_csv("./datasets/data-1-onehot-test.csv")
@@ -308,19 +375,12 @@ train = (train_in, train_out)
 
 test_in = tt.drop(["class"], axis=1).to_numpy()
     # test_in = np.array([[int(w.strip("b'")) for w in v] for v in test_in], dtype=np.int32)
-test_out = tt["class"].to_numpy()
+test_out = np.where(tt["class"].to_numpy() == "b'0'", 0, 1)
+test_out = np.array([[1, 0] if x == 0 else [0, 1] for x in test_out])
 
 test = (test_in, test_out)
 
 snn.Fit(train=train, epochs=1000)
 
-x = np.arange(start=0, step=1, stop= len(snn.pLoss))
-y = snn.pLoss
-y2 = snn.acc
-
-print(f"Starting Loss: {y[0]}, Ending Loss: {y[-1]}")
-print(f"Starting Accuracy: {y2[0]}, Ending Accuracy: {y2[-1]}")
-
-plt.plot(x, y)
-plt.plot(x, y2)
-plt.show()
+snn.Test(test)
+snn.plotMetrics()
