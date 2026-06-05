@@ -102,10 +102,10 @@ class Network:
         
     # Backward should be called after Forward. It takes the output of the network and the target values and calculates the gradients for each layer and updates the weights and biases accordingly.
     def Backward(self):
-        dL_dn = self.dL_do # the gradient of the loss with respect to the output of the network. it is calculated in the loss function and stored in the network object for use in the backward pass.
+        dL_dn = self.layers[-1].backward(self.dL_do) # the gradient of the loss with respect to the output of the network. it is calculated in the loss function and stored in the network object for use in the backward pass.
 
         # simple backward pass. the gradient of the loss with respect to the output of the network is passed through the network layer by layer in reverse order.
-        for layer in reversed(self.layers[1:]):
+        for layer in reversed(self.layers[1:-1]):
             dL_dn = layer.backward(dL_dn)
 
     # Fit should be called after Compile. 
@@ -121,7 +121,7 @@ class Network:
         # simple training loop.
         for epoch in range(epochs):
             self.Forward(train[0])
-            self.dL_do = self.loss(targets) # precariously stores the gradient of the loss with respect to the output of the network for use in the backward pass. change this later. might be made more modular.
+            self.dL_do = self.loss(targets) # precariously stores the gradient of the loss with respect to the output of the network for use in the backward pass.
             self.Backward()
             self.pLoss.append(float(self.Loss))
 
@@ -309,7 +309,7 @@ class Layers:
             dL_daz = dL_dz
 
         # the gradients for the weights, biases, and input of the layer are calculated based on the gradient of the loss with respect to the activated output of the layer and the input to the layer.
-        dL_dw = self.inp.T @ dL_daz / len(self.inp) #change this later. use self.matmul(). might have to look at the dot products of I.T * dL/daz and dL/daz.T and I
+        dL_dw = self.matmul(self.inp.T, dL_daz) / len(self.inp) #change this later. use self.matmul(). might have to look at the dot products of I.T * dL/daz and dL/daz.T and I
         dL_db = np.mean(dL_daz, axis=0)
         dL_din = self.matmul(dL_daz, self.weights.T)
 
