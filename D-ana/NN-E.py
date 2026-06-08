@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 # 5. maybe add a simple preprocessor extend functionality. 1/2
 # 6. maybe code a simple parameter randomizer for testing and experimentation purposes.
 # 7. timers for experimentation purposes. maybe make a simple class for this that can be used as a context manager.
+# 8. bricked New_pc branch. wont miss it.
 
 
 class Network:
