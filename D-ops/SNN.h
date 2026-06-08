@@ -12,9 +12,10 @@ __kernel void snn_neuronOut(
     const int batchLength,
     const int neuronLength,
     const int inputLength
-){
+    ){
     int r = get_global_id(0);
     int c = get_global_id(1);
+
     if(r >= batchLength || c >= neuronLength) return;
 
     float sum = 0.0f + bias[c]; 
@@ -23,6 +24,7 @@ __kernel void snn_neuronOut(
     }
 
     neuronValues[r * neuronLength + c] = sum;
+
 })";
 
 
@@ -38,6 +40,7 @@ extern "C" void init_snn(){
         return;
     }
     kernel = clCreateKernel(program, "snn_neuronOut", NULL);
+    printf("snn initialized\n");
 }
 
 extern "C" void snn_forward(
@@ -49,33 +52,44 @@ extern "C" void snn_forward(
     int neuronLength, 
     int inputLength
 ){
-    cl_mem trainbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*batchLength*inputLength, training, NULL);
-    cl_mem weightbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*inputLength*neuronLength, weights, NULL);
-    cl_mem biasbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*neuronLength, bias, NULL);
+    cl_int err;
+    cl_mem trainbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*batchLength*inputLength, training, &err);
+    
+    cl_mem weightbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*inputLength*neuronLength, weights, &err);
+    
+    cl_mem biasbuf = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float)*neuronLength, bias, &err);
+    
 
-    cl_mem neuronbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*batchLength*neuronLength, NULL, NULL);
+    cl_mem neuronbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*batchLength*neuronLength, NULL, &err);
+    
+
+    // int lsize = 64;
+    cl_int cl_batch = (cl_int)batchLength;
+    cl_int cl_neuron = (cl_int)neuronLength;
+    cl_int cl_input = (cl_int)inputLength;
 
     clSetKernelArg(kernel, 0, sizeof(cl_mem), &trainbuf);
     clSetKernelArg(kernel, 1, sizeof(cl_mem), &weightbuf);  
     clSetKernelArg(kernel, 2, sizeof(cl_mem), &biasbuf);  
-    clSetKernelArg(kernel, 3, sizeof(cl_mem), &neuronbuf);  
-    clSetKernelArg(kernel, 4, sizeof(int), &batchLength);  
-    clSetKernelArg(kernel, 5, sizeof(int), &neuronLength);
-    clSetKernelArg(kernel, 6, sizeof(int), &inputLength);
+    clSetKernelArg(kernel, 3, sizeof(cl_mem), &neuronbuf); 
+    // clSetKernelArg(kernel, 4, sizeof(float)*lsize, NULL);
+    clSetKernelArg(kernel, 4, sizeof(cl_int), &cl_batch);  
+    clSetKernelArg(kernel, 5, sizeof(cl_int), &cl_neuron);
+    clSetKernelArg(kernel, 6, sizeof(cl_int), &cl_input);
 
     
     size_t global_size[2] = {(size_t)batchLength, (size_t)neuronLength};
+    // size_t local_size[2] = {1, (size_t)lsize};
     float zero = 0.0f;
-    clEnqueueFillBuffer(queue, neuronbuf, &zero, sizeof(float), 0, sizeof(float)*batchLength*neuronLength, 0, NULL, NULL);
-
     clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size, NULL, 0, NULL, NULL);
+    
     clFinish(queue);
-
+    
     clEnqueueReadBuffer(queue, neuronbuf, CL_TRUE, 0, sizeof(float)*batchLength*neuronLength, neuronValues, 0, NULL, NULL);
-
-
+    
     clReleaseMemObject(trainbuf);
     clReleaseMemObject(biasbuf);
     clReleaseMemObject(weightbuf);
     clReleaseMemObject(neuronbuf);
+    // for(int i = 0; i < 10; i++) printf("neuronbuf[%d] = %f\n", i, neuronValues[i]);
 }

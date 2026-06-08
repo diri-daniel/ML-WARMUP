@@ -3,7 +3,7 @@
         {
             "type": "cppbuild",
             "label": "project build",
-            "command": "C:/msys64/ucrt64/bin/g++.exe",
+            "command": "C:/msys64/ucrt64/bin/gcc.exe",
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
