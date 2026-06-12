@@ -260,10 +260,10 @@ class Network:
             else:
                 tag = "out"
 
-            temp1_w = cache + "/" + tag + "/" + "weights.nby"
-            temp1_b = cache + "/" + tag + "/" + "biases.nby"
-            temp2_w = curr + "/" + tag + "/" + "weights.nby"
-            temp2_b = curr + "/" + tag + "/" + "biases.nby"
+            temp1_w = cache + "/" + tag + "/" + "weights.npy"
+            temp1_b = cache + "/" + tag + "/" + "biases.npy"
+            temp2_w = curr + "/" + tag + "/" + "weights.npy"
+            temp2_b = curr + "/" + tag + "/" + "biases.npy"
 
             os.makedirs(os.path.dirname(temp1_w), exist_ok=True)
             os.makedirs(os.path.dirname(temp1_b), exist_ok=True)
