@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy
-from Layers import Layers
-from Network import Network
-from Preprocessor import Preprocessor
+from Experiment.Layers import Layers
+from Experiment.Network import Network
+from Experiment.Preprocessor import Preprocessor
 
 # Note:
 # 1. testing is not implemented yet. only training is implemented. - Done
@@ -43,7 +43,7 @@ snn = Network([
     Layers(b//2, "relu"),
     Layers(b//4, "relu"),
     Layers(d, "SFMX")
-])
+],"Exp1", "Neural Network")
 
 # snn = Network([
 #     Layers(17),
@@ -64,5 +64,7 @@ snn.Compile(LearningRate=0.1, metrics=["Accuracy", "F1", "Precision", "Recall"],
 snn.Fit(train=train, n=10, epochs=10)
 
 snn.Test(test)
+
+snn.save()
 
 snn.plotMetrics()

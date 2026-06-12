@@ -1,6 +1,8 @@
 import numpy as np
 import ctypes
 import matplotlib.pyplot as plt
+import datetime
+import os
 
 # Note:
 # 1. testing is not implemented yet. only training is implemented. - Done
@@ -14,13 +16,35 @@ import matplotlib.pyplot as plt
 
 
 class Network:
-    def __init__(self, layers:list)->None:
+    def __init__(self, layers:list, name:str, type:str="network")->None:
         # layers should be a list of Layers objects.
         # The first layer should be the input layer and the last layer should be the output layer. 
         # The input layer is not used for calculations but is used to set the input shape for the first hidden layer. 
         # The output layer is used to set the output shape for the last hidden layer. 
         # The hidden & output layers are used for calculations and can have any activation function and weight distribution.
         self.layers = layers
+
+        try:
+            self.name = name
+            self.type = type
+
+        except Exception:
+            raise(Exception)
+
+    def initOpenCl(self):
+        self.lib = ctypes.CDLL("Helper/main.dll")
+        self.lib.init_opencl()
+        self.lib.init_snn()
+
+        self.lib.snn_forward.argtypes  = [
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int
+        ]
 
     # Compile should be called after initializing the network and before training. 
     # It sets the loss function, metric functions, and generates weights and biases for all layers except the input layer. 
@@ -222,17 +246,41 @@ class Network:
         plt.legend()
         plt.show()
 
-    def initOpenCl(self):
-        self.lib = ctypes.CDLL("Helper/main.dll")
-        self.lib.init_opencl()
-        self.lib.init_snn()
+    def save(self):
+        day = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+        now = datetime.datetime.now()
+        cache = "Cache/" + self.type + "/" + self.name + "/" + str(now.year) +"/"+ month[now.month - 1] +"/"+ day[now.weekday()] + " " + str(now.day) +"/"+ str(now.hour) +"-"+ str(now.minute) +"-"+ str(now.second)
+        curr = "Outputs/" + self.type + "/" + self.name
 
-        self.lib.snn_forward.argtypes  = [
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.POINTER(ctypes.c_float),
-            ctypes.c_int,
-            ctypes.c_int,
-            ctypes.c_int
-        ]
+        i = 1
+        for layers in self.layers[1:]:
+            if i < len(self.layers) - 1:
+                tag = f"h{i}"
+            else:
+                tag = "out"
+
+            temp1_w = cache + "/" + tag + "/" + "weights.nby"
+            temp1_b = cache + "/" + tag + "/" + "biases.nby"
+            temp2_w = curr + "/" + tag + "/" + "weights.nby"
+            temp2_b = curr + "/" + tag + "/" + "biases.nby"
+
+            os.makedirs(os.path.dirname(temp1_w), exist_ok=True)
+            os.makedirs(os.path.dirname(temp1_b), exist_ok=True)
+            os.makedirs(os.path.dirname(temp2_w), exist_ok=True)
+            os.makedirs(os.path.dirname(temp2_b), exist_ok=True)
+
+            with open(temp1_w, "wb") as a:
+                np.save(a, layers.weights)
+            with open(temp2_w, "wb") as b:
+                np.save(b, layers.weights)
+            with open(temp1_b, "wb") as c:
+                np.save(c, layers.biases)
+            with open(temp2_b, "wb") as d:
+                np.save(d, layers.biases)
+
+            a.close()
+            b.close()
+            c.close()
+            d.close()
+            i+=1
