@@ -3,6 +3,7 @@ import numpy
 from Experiment.Layers import Layers
 from Experiment.Network import Network
 from Experiment.Preprocessor import Preprocessor
+from Experiment.Network_types import NetworkType
 
 # Note:
 # 1. testing is not implemented yet. only training is implemented. - Done
@@ -43,7 +44,7 @@ snn = Network([
     Layers(b//2, "relu"),
     Layers(b//4, "relu"),
     Layers(d, "SFMX")
-],"Exp1", "Neural Network")
+],"Exp1", NetworkType.Simple_Neural_Network)
 
 # snn = Network([
 #     Layers(17),
@@ -61,10 +62,13 @@ snn = Network([
 
 snn.Compile(LearningRate=0.1, metrics=["Accuracy", "F1", "Precision", "Recall"], weightDist="He_Uniform")
 
-snn.Fit(train=train, n=10, epochs=10)
+snn.Fit(train=train, n=10, epochs=35)
 
 snn.Test(test)
 
 snn.save()
 
+print(snn.export()[:2], snn.export()[-1].keys())
+
 snn.plotMetrics()
+

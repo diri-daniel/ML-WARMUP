@@ -1,6 +1,5 @@
+from .Network_types import NetworkType
 import numpy as np
-import ctypes
-import matplotlib.pyplot as plt
 import datetime
 import os
 
@@ -8,31 +7,34 @@ import os
 # 1. testing is not implemented yet. only training is implemented. - Done
 # 2. implement accuracy and other metrics. - Done
 # 3. implement opencl and cuda backend for layers. - rewrite .. they keep failing at either extreme values or large datasets.
-# 4. add save and reuse functionality.
+# 4. add save and reuse functionality. - done
 # 5. maybe add a simple preprocessor extend functionality. 1/2
 # 6. maybe code a simple parameter randomizer for testing and experimentation purposes.
 # 7. timers for experimentation purposes. maybe make a simple class for this that can be used as a context manager.
 # 8. bricked New_pc branch. wont miss it.
+# 9. add import and export functionality for db uses. - done
 
 
 class Network:
-    def __init__(self, layers:list, name:str, type:str="network")->None:
+    def __init__(self, layers:list, name:str, type:NetworkType=NetworkType.Simple_Neural_Network, helper="./Helper/")->None:
         # layers should be a list of Layers objects.
         # The first layer should be the input layer and the last layer should be the output layer. 
         # The input layer is not used for calculations but is used to set the input shape for the first hidden layer. 
         # The output layer is used to set the output shape for the last hidden layer. 
         # The hidden & output layers are used for calculations and can have any activation function and weight distribution.
         self.layers = layers
+        self.helper = helper
 
         try:
             self.name = name
             self.type = type
 
-        except Exception:
-            raise(Exception)
+        except Exception as e:
+            raise(e)
 
     def initOpenCl(self):
-        self.lib = ctypes.CDLL("Helper/main.dll")
+        import ctypes
+        self.lib = ctypes.CDLL(self.helper+"main.dll")
         self.lib.init_opencl()
         self.lib.init_snn()
 
@@ -205,16 +207,22 @@ class Network:
     def precision(self, target):
         predicted = np.argmax(self.output, axis=1)
         actual = np.argmax(target, axis=1)
-        tp = np.sum((predicted == 1) & (actual == 1))
-        fp = np.sum((predicted == 1) & (actual == 0))
-        return tp / (tp + fp + 1e-7)
-    
+        precisions = []
+        for c in range(target.shape[1]):
+            tp = np.sum((predicted == c) & (actual == c))
+            fp = np.sum((predicted == c) & (actual != c))
+            precisions.append(tp / (tp + fp + 1e-7))
+        return np.mean(precisions)
+
     def recall(self, target):
         predicted = np.argmax(self.output, axis=1)
         actual = np.argmax(target, axis=1)
-        tp = np.sum((predicted == 1) & (actual == 1))
-        fn = np.sum((predicted == 0) & (actual == 1))
-        return tp / (tp + fn + 1e-7)
+        recalls = []
+        for c in range(target.shape[1]):
+            tp = np.sum((predicted == c) & (actual == c))
+            fn = np.sum((predicted != c) & (actual == c))
+            recalls.append(tp / (tp + fn + 1e-7))
+        return np.mean(recalls)
 
     def f1(self, target):
         precision = self.precision(target)
@@ -238,6 +246,7 @@ class Network:
                     store[metric].append(float(self.metrics[metric](target)))
     
     def plotMetrics(self):
+        import matplotlib.pyplot as plt
         x = np.arange(start=0, step=1, stop= len(self.pLoss))
         y = self.pLoss
         plt.plot(x, y, label="Loss")
@@ -245,6 +254,29 @@ class Network:
             plt.plot(x, self.sMV[metric], label=metric)
         plt.legend()
         plt.show()
+
+    def getDetails(self):
+        pass
+
+    def _writeReadme(self, path, content):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.writelines(content)
+
+    def _writeNames(self, base):
+        nameMD = base + "/" + self.type + "/Names.md"
+        os.makedirs(os.path.dirname(nameMD), exist_ok=True)
+
+        if not os.path.exists(nameMD):
+            with open(nameMD, "w") as n:
+                n.writelines([f"{self.type} Names.\n", "\n"])
+
+        with open(nameMD, "r+") as n:
+            namesmd = n.readlines()
+
+        if len(namesmd) <= 2 or f"- {self.name}\n" not in namesmd[2:]:
+            with open(nameMD, "a") as n:
+                n.write(f"- {self.name}\n")
 
     def save(self):
         day = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -279,8 +311,57 @@ class Network:
             with open(temp2_b, "wb") as d:
                 np.save(d, layers.biases)
 
-            a.close()
-            b.close()
-            c.close()
-            d.close()
             i+=1
+
+        self._writeNames("Outputs")
+        self._writeNames("Cache")
+
+        # details = self.getDetails()
+        # self._writeReadme(curr + "/README.md", details)
+        # self._writeReadme(cache + "/README.md", details)
+
+    def load(self, name:str=None, type:NetworkType=None):
+        if not name: name = self.name
+        if not type: type = self.type
+        
+        curr = "Outputs/" + type + "/" + name
+        if not os.path.exists(curr):
+            raise FileNotFoundError(f"Model not found: {curr}")
+        
+        i = 1
+        for layers in self.layers[1:]:
+            tag = f"h{i}" if i < len(self.layers) - 1 else "out"
+            
+            w_path = curr + "/" + tag + "/weights.npy"
+            b_path = curr + "/" + tag + "/biases.npy"
+            
+            with open(w_path, "rb") as f:
+                layers.weights = np.load(f)
+            with open(b_path, "rb") as f:
+                layers.biases = np.load(f)
+            i += 1
+
+    def export(self):
+        model_data = {}
+        i = 1
+        for layers in self.layers[1:]:
+            tag = f"h{i}" if i < len(self.layers) - 1 else "out"
+            model_data[tag] = {
+                "weights": layers.weights.tobytes(),
+                "biases": layers.biases.tobytes(),
+                "shape_w": layers.weights.shape,
+                "shape_b": layers.biases.shape
+            }
+            i += 1
+        return (self.type, self.name, model_data)
+    
+    def import_model(self, model_data):
+        i = 1
+        for layers in self.layers[1:]:
+            tag = f"h{i}" if i < len(self.layers) - 1 else "out"
+            data = model_data[tag]
+            
+            layers.weights = np.frombuffer(data["weights"]).reshape(data["shape_w"]).copy()
+            layers.biases = np.frombuffer(data["biases"]).reshape(data["shape_b"]).copy()
+            i += 1
+
